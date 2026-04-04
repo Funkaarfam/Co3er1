@@ -893,21 +893,65 @@ void main(){gl_Position=position;}`;
   let firstLoad    = true;
   let failedLogins = 0;
 
+  // ── LOCKOUT PROTECTION ──
+  const MAX_ATTEMPTS = 5;
+  const LOCKOUT_MS   = 5 * 60 * 1000; // 5 minutes
+  const LS_KEY_COUNT = 'c3_fail_count';
+  const LS_KEY_TIME  = 'c3_fail_time';
+
+  function getLockoutState() {
+    const count = parseInt(localStorage.getItem(LS_KEY_COUNT) || '0', 10);
+    const since = parseInt(localStorage.getItem(LS_KEY_TIME)  || '0', 10);
+    const elapsed = Date.now() - since;
+    if (count >= MAX_ATTEMPTS && elapsed < LOCKOUT_MS) {
+      return { locked: true, remaining: Math.ceil((LOCKOUT_MS - elapsed) / 1000) };
+    }
+    if (elapsed >= LOCKOUT_MS) {
+      localStorage.removeItem(LS_KEY_COUNT);
+      localStorage.removeItem(LS_KEY_TIME);
+    }
+    return { locked: false };
+  }
+
+  function recordFailedAttempt() {
+    const count = parseInt(localStorage.getItem(LS_KEY_COUNT) || '0', 10);
+    localStorage.setItem(LS_KEY_COUNT, count + 1);
+    if (count === 0) localStorage.setItem(LS_KEY_TIME, Date.now());
+  }
+
+  function clearLockout() {
+    localStorage.removeItem(LS_KEY_COUNT);
+    localStorage.removeItem(LS_KEY_TIME);
+  }
+
   /* ── LOGIN ── */
   async function doLogin() {
+    const lockout = getLockoutState();
+    const err = document.getElementById('loginErr');
+    const btn = document.getElementById('loginBtn');
+
+    if (lockout.locked) {
+      err.textContent = `Too many attempts. Try again in ${lockout.remaining}s.`;
+      err.classList.add('show');
+      return;
+    }
+
     const email = document.getElementById('loginEmail').value.trim();
     const pass  = document.getElementById('loginPassword').value;
-    const err   = document.getElementById('loginErr');
-    const btn   = document.getElementById('loginBtn');
     err.classList.remove('show');
     btn.disabled = true; btn.textContent = 'Authenticating…';
     try {
       await signInWithEmailAndPassword(auth, email, pass);
+      clearLockout();
     } catch(e) {
       failedLogins++;
+      recordFailedAttempt();
       document.getElementById('secFailedLogins').textContent = failedLogins;
       addThreat('med', `Failed login attempt from ${email.substring(0,20)}…`, 'just now');
-      err.textContent = friendlyError(e.code);
+      const remaining = MAX_ATTEMPTS - failedLogins;
+      err.textContent = remaining > 0
+        ? `${friendlyError(e.code)} (${remaining} attempt${remaining===1?'':'s'} left)`
+        : `Account locked for 5 minutes.`;
       err.classList.add('show');
       btn.disabled = false; btn.textContent = 'Enter Panel →';
     }

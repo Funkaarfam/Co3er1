@@ -33,19 +33,27 @@ const Contact = () => {
   };
 
   try {
-    // Save to Firebase
+    // 1. Save to Firebase (primary — must succeed)
     await addDoc(collection(db, "contacts"), {
       ...payload,
       status:    "new",
       createdAt: serverTimestamp(),
     });
 
-    // Send thank-you email
-    await fetch("/api/send-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    // 2. Send email (secondary — don't block success if it fails)
+    try {
+      const res = await fetch("/api/send-email", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        console.warn("Email API returned", res.status, await res.text());
+      }
+    } catch (emailErr) {
+      // Email failed but Firebase saved — still count as success
+      console.warn("Email send failed (non-critical):", emailErr);
+    }
 
     setSubmitted(true);
     toast.success("Message sent! Check your email for confirmation.");

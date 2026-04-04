@@ -1,33 +1,68 @@
+import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
+const CO3ER_EMAIL = 'co3er@gmail.com';
 
-export default async function handler(req: any, res: any) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  if (!req.body) {
+    return res.status(400).json({ error: 'Missing request body' });
+  }
+
   const { name, email, service, budget, timeline, message } = req.body;
+
+  if (!name || !email || !message) {
+    return res.status(400).json({ error: 'Name, email and message are required' });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Invalid email address' });
+  }
 
   try {
     await resend.emails.send({
       from: 'Co3er Development <onboarding@resend.dev>',
       to: email,
-      subject: `✅ We got your message, ${name}!`,
+      subject: `We got your message, ${name}!`,
       html: `
-        <h2>Hey ${name}! 👋</h2>
-        <p>Thanks for reaching out to Co3er Development.</p>
-        <p><strong>Service:</strong> ${service}</p>
-        <p><strong>Budget:</strong> ${budget}</p>
-        <p><strong>Timeline:</strong> ${timeline}</p>
-        <p><strong>Message:</strong> ${message}</p>
-        <br/>
-        <p>We'll get back to you within 24 hours!</p>
-        <p>— Co3er Development Team</p>
+        <div style="font-family:sans-serif;max-width:600px;margin:0 auto;background:#04040a;color:#f0f0fa;padding:32px;border-radius:16px;">
+          <h2 style="color:#a78bfa;">Hey ${name}!</h2>
+          <p>Thanks for reaching out to <strong>Co3er Development</strong>. We'll reply within <strong>24 hours</strong>.</p>
+          <hr style="border-color:rgba(255,255,255,0.08);margin:24px 0;" />
+          <p><strong style="color:#a78bfa;">Service:</strong> ${service || 'Not specified'}</p>
+          <p><strong style="color:#a78bfa;">Budget:</strong> ${budget || 'Not specified'}</p>
+          <p><strong style="color:#a78bfa;">Timeline:</strong> ${timeline || 'Not specified'}</p>
+          <p><strong style="color:#a78bfa;">Message:</strong> ${message}</p>
+          <hr style="border-color:rgba(255,255,255,0.08);margin:24px 0;" />
+          <p style="color:#7878a0;font-size:0.85em;">Fastest response: discord.gg/co3er</p>
+          <p>— Co3er Development Team</p>
+        </div>
       `,
     });
+
+    await resend.emails.send({
+      from: 'Co3er Contact Form <onboarding@resend.dev>',
+      to: CO3ER_EMAIL,
+      subject: `New inquiry from ${name}`,
+      html: `
+        <h2>New Contact Form Submission</h2>
+        <p><strong>Name:</strong> ${name}</p>
+        <p><strong>Email:</strong> ${email}</p>
+        <p><strong>Service:</strong> ${service || 'Not specified'}</p>
+        <p><strong>Budget:</strong> ${budget || 'Not specified'}</p>
+        <p><strong>Timeline:</strong> ${timeline || 'Not specified'}</p>
+        <p><strong>Message:</strong> ${message}</p>
+      `,
+    });
+
     return res.status(200).json({ success: true });
   } catch (error) {
+    console.error('Resend error:', error);
     return res.status(500).json({ error: 'Failed to send email' });
   }
 }
