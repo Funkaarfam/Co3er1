@@ -2,68 +2,60 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import CTASection from "@/components/CTASection";
 import { toast } from "sonner";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "@/lib/firebase";
 
 const Contact = () => {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading]     = useState(false);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-  e.preventDefault();
-  setLoading(true);
+    e.preventDefault();
+    setLoading(true);
 
-  const form     = e.currentTarget;
-  const elements = form.elements as HTMLFormControlsCollection & {
-    name:     HTMLInputElement;
-    email:    HTMLInputElement;
-    service:  HTMLSelectElement;
-    budget:   HTMLSelectElement;
-    timeline: HTMLSelectElement;
-    message:  HTMLTextAreaElement;
-  };
+    const form     = e.currentTarget;
+    const elements = form.elements as HTMLFormControlsCollection & {
+      name:     HTMLInputElement;
+      email:    HTMLInputElement;
+      service:  HTMLSelectElement;
+      budget:   HTMLSelectElement;
+      timeline: HTMLSelectElement;
+      message:  HTMLTextAreaElement;
+    };
 
-  const payload = {
-    name:     elements.name.value.trim(),
-    email:    elements.email.value.trim(),
-    service:  elements.service.value,
-    budget:   elements.budget.value,
-    timeline: elements.timeline.value,
-    message:  elements.message.value.trim(),
-  };
+    const payload = {
+      name:     elements.name.value.trim(),
+      email:    elements.email.value.trim(),
+      service:  elements.service.value,
+      budget:   elements.budget.value,
+      timeline: elements.timeline.value,
+      message:  elements.message.value.trim(),
+    };
 
-  try {
-    // 1. Save to Firebase (primary — must succeed)
-    await addDoc(collection(db, "contacts"), {
-      ...payload,
-      status:    "new",
-      createdAt: serverTimestamp(),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
-    // 2. Send email (secondary — don't block success if it fails)
     try {
       const res = await fetch("/api/send-email", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(payload),
+        signal:  controller.signal,
       });
-      if (!res.ok) {
-        console.warn("Email API returned", res.status, await res.text());
+      clearTimeout(timeout);
+      if (!res.ok) throw new Error(`API returned ${res.status}`);
+      setSubmitted(true);
+      toast.success("Message sent! We'll get back to you within 24 hours.");
+    } catch (err: any) {
+      clearTimeout(timeout);
+      if (err.name === "AbortError") {
+        toast.error("Request timed out. Please contact us on Discord or WhatsApp.");
+      } else {
+        toast.error("Something went wrong. Please reach out on Discord or WhatsApp.");
       }
-    } catch (emailErr) {
-      // Email failed but Firebase saved — still count as success
-      console.warn("Email send failed (non-critical):", emailErr);
+      console.error("Submit error:", err);
+    } finally {
+      setLoading(false);
     }
-
-    setSubmitted(true);
-    toast.success("Message sent! Check your email for confirmation.");
-  } catch (err) {
-    console.error("Error:", err);
-    toast.error("Something went wrong. Please try again.");
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   return (
     <main className="pt-[70px]">
